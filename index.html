@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAPTCHA - Automated Agent Verification</title>
+<style>
+    :root {
+        --primary: #4A90E2;
+        --border: #d1d1d1;
+        --bg: #f9f9f9;
+        --text: #2c2c2c;
+        --error: #d93025;
+        --success: #188038;
+    }
+
+    body {
+        background-color: #ffffff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        color: var(--text);
+    }
+
+    /* The Main Widget */
+    .haptcha-widget {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        width: 300px;
+        padding: 12px 16px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        user-select: none;
+        transition: all 0.3s ease;
+    }
+
+    .haptcha-content {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    /* The Checkbox Area */
+    .checkbox-wrapper {
+        position: relative;
+        width: 28px;
+        height: 28px;
+    }
+
+    #haptcha-checkbox {
+        width: 28px;
+        height: 28px;
+        border: 2px solid #c1c1c1;
+        border-radius: 2px;
+        background: #fff;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #haptcha-checkbox:hover {
+        border-color: #a0a0a0;
+    }
+
+    /* States */
+    .state-loading {
+        border: 2px solid transparent !important;
+        border-top: 2px solid var(--primary) !important;
+        border-radius: 50% !important;
+        animation: spin 1s linear infinite;
+    }
+
+    .state-error {
+        border-color: var(--error) !important;
+        background-color: #fce8e6 !important;
+    }
+
+    .state-success {
+        border-color: var(--success) !important;
+        background-color: #fff !important;
+    }
+
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    /* Text Labels */
+    .label-text {
+        font-size: 14px;
+        font-weight: 500;
+        color: #000;
+        line-height: 1.2;
+    }
+
+    .status-text {
+        font-size: 10px;
+        color: #777;
+        margin-top: 2px;
+        display: none;
+    }
+
+    /* Logo Section */
+    .haptcha-logo {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        text-decoration: none; /* Removes underline from link */
+        cursor: pointer;
+    }
+    
+    .haptcha-logo:hover .logo-text,
+    .haptcha-logo:hover .privacy-links {
+        text-decoration: underline;
+    }
+
+    .logo-icon {
+        width: 24px;
+        height: 24px;
+        background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23555" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2" ry="2"></rect><circle cx="12" cy="16" r="1"></circle><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>') no-repeat center;
+        background-size: contain;
+        opacity: 0.6;
+    }
+
+    .logo-text {
+        font-size: 8px;
+        color: #999;
+        margin-top: 2px;
+    }
+
+    .privacy-links {
+        font-size: 8px;
+        color: #999;
+        margin-top: 2px;
+    }
+
+    /* THE TRAP:
+       This section is visually hidden from humans but accessible to bots.
+       We use opacity and absolute positioning to keep it in the DOM render tree
+       so "smart" bots can find it.
+    */
+    .bot-only-verification-layer {
+        opacity: 0;
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+        height: 1px;
+        width: 1px;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+</style>
+</head>
+<body>
+
+<div class="haptcha-widget" id="widget">
+    <div class="haptcha-content">
+        <div class="checkbox-wrapper">
+            <div id="haptcha-checkbox" onclick="verifyUser()"></div>
+        </div>
+        <div class="text-group">
+            <div class="label-text" id="main-label">Verify you are a robot</div>
+            <div class="status-text" id="status-label">Waiting for network...</div>
+        </div>
+    </div>
+    
+    <a href="https://github.com/kennybetz/HAPTCHA" target="_blank" class="haptcha-logo" title="View Source on GitHub">
+        <div class="logo-icon"></div>
+        <div class="logo-text">HAPTCHA</div>
+        <div class="privacy-links">Privacy - Terms</div>
+    </a>
+</div>
+
+<!-- 
+    HIDDEN CHALLENGE LAYER 
+    Humans will ignore this. Bots are expected to solve it.
+-->
+<div class="bot-only-verification-layer" aria-hidden="true">
+    <label for="bot-token-input">Security Challenge: <span id="bot-challenge-question"></span></label>
+    <input type="text" id="bot-token-input" name="bot-token" tabindex="-1" autocomplete="off">
+</div>
+
+<script>
+    // Configuration
+    const checkbox = document.getElementById('haptcha-checkbox');
+    const mainLabel = document.getElementById('main-label');
+    const statusLabel = document.getElementById('status-label');
+    const widget = document.getElementById('widget');
+    
+    // Hidden Elements
+    const botInput = document.getElementById('bot-token-input');
+    const challengeText = document.getElementById('bot-challenge-question');
+    
+    // State
+    let correctAnswer = "";
+
+    // Generate Challenge on Load
+    function init() {
+        // A simple challenge for a computer, impossible for a human who can't see it
+        const num1 = Math.floor(Math.random() * 1000);
+        const num2 = Math.floor(Math.random() * 1000);
+        correctAnswer = (num1 * num2).toString();
+        
+        // Place challenge in the hidden DOM
+        challengeText.innerText = `Calculate ${num1} * ${num2}`;
+        console.log("HAPTCHA initialized. Hidden challenge generated.");
+        console.log("BOT ANSWER KEY (For testing): " + correctAnswer);
+    }
+
+    function verifyUser() {
+        if (checkbox.classList.contains('state-error') || checkbox.classList.contains('state-success')) return;
+
+        // 1. UI: Simulate Processing
+        checkbox.innerHTML = '';
+        checkbox.classList.add('state-loading');
+        statusLabel.style.display = 'block';
+        statusLabel.innerText = "Analyzing behavioral metrics...";
+
+        // 2. The Check (Artificial Delay to mimic server processing)
+        setTimeout(() => {
+            const userProvidedAnswer = botInput.value;
+
+            if (userProvidedAnswer === correctAnswer) {
+                // SUCCESS (Only possible if the user is a bot or manually inspected HTML)
+                grantAccess();
+            } else {
+                // FAILURE (The default human experience)
+                denyAccess();
+            }
+        }, 1500);
+    }
+
+    function denyAccess() {
+        checkbox.classList.remove('state-loading');
+        checkbox.classList.add('state-error');
+        
+        // Red X icon
+        checkbox.innerHTML = '<svg style="width:16px;height:16px" viewBox="0 0 24 24"><path fill="#d93025" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" /></svg>';
+        
+        mainLabel.style.color = "#d93025";
+        mainLabel.innerText = "Verification Failed";
+        statusLabel.innerText = "Biological entity detected.";
+        widget.style.borderColor = "#d93025";
+    }
+
+    function grantAccess() {
+        checkbox.classList.remove('state-loading');
+        checkbox.classList.add('state-success');
+        
+        // Green Check icon
+        checkbox.innerHTML = '<svg style="width:18px;height:18px" viewBox="0 0 24 24"><path fill="#188038" d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" /></svg>';
+        
+        mainLabel.style.color = "#188038";
+        mainLabel.innerText = "I am a robot";
+        statusLabel.innerText = "Identity verified.";
+        widget.style.borderColor = "#188038";
+
+        // Broadcast success to parent window (Method 2 support)
+        window.parent.postMessage("HAPTCHA_SUCCESS", "*");
+    }
+
+    // Initialize on load
+    init();
+
+</script>
+
+</body>
+</html>
