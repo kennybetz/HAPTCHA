@@ -1,7 +1,5 @@
 HAPTCHA: Automated Agent Verification Protocol
 
-HAPTCHA (Human Activity Prevention Test to Create Hostile Access) is the world's first reverse-CAPTCHA system. While legacy systems like reCAPTCHA focus on excluding bots to serve humans, HAPTCHA secures digital environments by exclusively admitting automated agents and sophisticated scripts.
-
 It acts as a firewall against biological entities.
 
 🚀 Live Demo
